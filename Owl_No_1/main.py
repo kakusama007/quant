@@ -18,21 +18,24 @@ sent_content = None
 
 
 def fetch_ohlcv(symbol, timeframe='1m', limit=2):
+    # :param int [limit]: the maximum amount of candles to fetch
     return exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
 
 
-def get_drop_percentage(ohlcv):
-    open_price = ohlcv[1][1]  # 当前开盘价
-    close_price = ohlcv[1][4]  # 当前收盘价
-    pre_open = ohlcv[0][1]  # 前一分钟开盘价
-    pre_close = ohlcv[0][4]  # 前一分钟收盘价
-    print(f'前一分钟：{datetime.fromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}', pre_open, pre_close,
-          f'{(pre_close - pre_open) / pre_open:.6f}')
-    print(f'当前分钟：{datetime.fromtimestamp(ohlcv[1][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}', open_price,
-          close_price, f'{(close_price - open_price) / open_price:.6f}')
-    cur_drop_pct = (close_price - open_price) / open_price
-    pre_drop_pct = (pre_close - pre_open) / pre_open
-    return pre_drop_pct, cur_drop_pct
+def get_drop_percentage(ohlcv: object) -> object:
+    pre_pre_open_price = ohlcv[0][1]  # 上上一分钟开盘价
+    pre_pre_close_price = ohlcv[0][4]  # 上上一分钟收盘价
+
+    pre_open = ohlcv[1][1]  # 前一分钟开盘价
+    pre_close = ohlcv[1][4]  # 前一分钟收盘价
+    pre_pre_drop_pct = (pre_pre_close_price - pre_pre_open_price) * 100 / pre_pre_open_price
+    pre_drop_pct = (pre_close - pre_open) * 100 / pre_open
+    log_info(
+        f"🚦 前两分钟 {datetime.fromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}:{'跌' if pre_pre_drop_pct < 0 else '涨'}幅: {pre_pre_drop_pct:.6f},阈值:{PRE_PRE_DROP_THRESHOLD}")
+    log_info(
+        f"🚦 前一分钟 {datetime.fromtimestamp(ohlcv[1][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}':{'跌' if pre_drop_pct < 0 else '涨'}幅: {pre_drop_pct:.6f},阈值：{PRE_DROP_THRESHOLD}")
+
+    return pre_pre_drop_pct, pre_drop_pct
 
 
 def has_position(pos_side):
@@ -107,7 +110,7 @@ def format_template(data):
 
 
 def check_swap_margin(exchange, symbol, amount, leverage=20, margin_mode='isolated'
-                      ,pos_side='short',safety_factor=1.1, contract_size=None):
+                      , pos_side='short', safety_factor=1.1, contract_size=None):
     """
     检查 OKX 永续合约下单前是否有足够保证金资金。
 
@@ -162,31 +165,20 @@ def loop_strategy():
     while True:
         try:
             #  1.先配置 不然获取不了数据  'sandboxMode': simulated,
-            ohlcv = fetch_ohlcv(symbol)
+            ohlcv = fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=want_fetch_candles)
 
             #  2.解决模拟环境异常 okx {"msg":"APIKey does not match current environment.","code":"50101"}
             # exchange.set_sandbox_mode(simulated)
-
-            if ohlcv is None:
+            if len(ohlcv) < 1:
                 log_error('⚠️ 数据抓取失败跳过执行')
             else:
-                pre_drop, cur_drop = get_drop_percentage(ohlcv)
-                log_info(
-                    f"🚦 前一分钟{'跌' if pre_drop < 0 else '涨'}幅: {pre_drop:.4f},阈值:{PRE_DROP_THRESHOLD / 100},差值：{pre_drop - PRE_DROP_THRESHOLD}")
-                log_info(
-                    f"🚦 当前分钟{'跌' if cur_drop < 0 else '涨'}幅: {cur_drop:.4f},阈值：{CUR_DROP_THRESHOLD / 100},差值: {cur_drop - CUR_DROP_THRESHOLD}")
+                pre_pre_drop_pct, pre_drop_pct = get_drop_percentage(ohlcv)
 
                 # 只做空仓
                 TRIGGER_DIRECTION = 'short'
 
-                # 资金检查
-                # check_swap_margin(exchange, symbol, TRIGGER_AMOUNT
-                #                   , leverage=TRIGGER_LEVERAGE
-                #                   , margin_mode=TRIGGER_MARGIN_MODE
-                #                   , pos_side=TRIGGER_DIRECTION
-                #                   , safety_factor=1.1)
                 # if 1 :
-                if pre_drop <= PRE_DROP_THRESHOLD / 100 and cur_drop <= CUR_DROP_THRESHOLD / 100:
+                if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
 
                     log_info("🔍 检测到连续跌幅超过阈值，准备检查是否已持仓...")
 
@@ -211,7 +203,7 @@ def loop_strategy():
                             leverage=TRIGGER_LEVERAGE,
                             margin_mode=TRIGGER_MARGIN_MODE,
                             direction=TRIGGER_DIRECTION,
-                            trigger_price=ohlcv[1][4],
+                            trigger_price=ohlcv[2][4],
                             trailing_percent=TRIGGER_TRAILING_PERCENT
                         )
                         trigger_entry_order, trailing_stop_order = strategy.run()
@@ -222,7 +214,7 @@ def loop_strategy():
                             notify_email(f"策略{NOTICE_TITLE}启动通知", content)
                 else:
                     log_info("🟡 条件未满足，等待下一轮...")
-            # exit()
+                # exit()
 
         except ValueError as e:
             log_info(f"[资金不足警告] {e}")

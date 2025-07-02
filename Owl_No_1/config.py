@@ -18,12 +18,13 @@ backup_domain = os.getenv("BACKUP_DOMAIN", "www.chouyi.tv")
 symbol = os.getenv("SYMBOL", "BTC/USDT:USDT")
 trade_type = os.getenv("TRADE_TYPE", "swap")
 timeframe = os.getenv("TIMEFRAME", "1m")
+want_fetch_candles = int(os.getenv("WANT_FETCH_CANDLES", '3'))
 
 
 # 策略参数
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "10")) # 每?秒执行一次
-PRE_DROP_THRESHOLD = float(os.getenv("PRE_DROP_THRESHOLD", "-0.01")) # 前一分钟跌幅1%
-CUR_DROP_THRESHOLD = float(os.getenv("CUR_DROP_THRESHOLD", "-0.01"))# 当前跌幅1%
+PRE_DROP_THRESHOLD = float(os.getenv("PRE_DROP_THRESHOLD", "-0.1")) # 前一分钟跌幅1%
+PRE_PRE_DROP_THRESHOLD = float(os.getenv("PRE_PRE_DROP_THRESHOLD", "-0.15"))# 前前跌幅1%
 TRIGGER_DIRECTION = os.getenv("TRIGGER_DIRECTION", "long")# 开仓方向 long  short 当前已经固定空仓，这个配置无效
 TRIGGER_MARGIN_MODE = os.getenv("TRIGGER_MARGIN_MODE", "isolated")# 保证金模式 逐仓模式 (isolated)	全仓模式 (cross)
 TRIGGER_AMOUNT = int(os.getenv("TRIGGER_AMOUNT", "1"))# 开仓数量（单位：合约张数）
