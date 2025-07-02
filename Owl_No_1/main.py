@@ -106,46 +106,132 @@ def format_template(data):
             """
 
 
+def check_swap_margin(exchange, symbol, amount, leverage=20, margin_mode='isolated'
+                      ,pos_side='short',safety_factor=1.1, contract_size=None):
+    """
+    检查 OKX 永续合约下单前是否有足够保证金资金。
+
+    参数：
+        exchange     - ccxt.okx() 实例
+        symbol       - 交易对，如 'BTC/USDT:USDT'
+        amount       - 想要买入或卖出的 BTC 数量
+        leverage     - 杠杆倍数（默认20倍）
+        pos_side     - 仓位方向默认空仓 short
+        margin_mode  - 'isolated' or 'cross'
+
+    报错：
+        如果保证金不足会 raise ValueError
+        所需保证金=下单数量×价格/杠杆倍数
+    """
+    # 获取合约信息（如果需要合约面值）
+    if contract_size is None:
+        markets = exchange.load_markets()
+        if symbol in markets:
+            contract_size = markets[symbol].get('contractSize', 1.0)
+        else:
+            log_warn(f"无法获取合约信息: {symbol}")
+            raise ValueError(f"无法找到市场信息: {symbol}")
+
+    # 获取当前最新价格
+    ticker = exchange.fetch_ticker(symbol)
+    # 买入使用卖一价 Ask（卖一价）# Bid（买一价）做多用 ask，做空用 bid
+    # Ask（卖价/卖一价）：卖方愿意接受的最低价格，即市场上卖单的最低价。
+    # Bid（买价/买一价）：买方愿意支付的最高价格，即市场上买单的最高价。
+    price = ticker['bid'] if pos_side == 'short' else ticker['ask']
+    # markPrice = ticker['markPrice']  # 标记价格 交易所用来计算爆仓和平仓的参考价格，目的是防止因交易所行情异常而导致不合理爆仓。
+    # 计算预估保证金 = 合约面值 * 张数 * 价格 / 杠杆
+    required_margin = contract_size * amount * price / leverage
+    required_margin *= safety_factor  # 加安全系数
+
+    quote = symbol.split('/')[1].split(':')[0]  # 提取出 USDT
+
+    if margin_mode == 'cross':
+        balance = exchange.fetch_balance({'type': trade_type})
+    else:  # isolated 或默认
+        balance = exchange.fetch_balance()
+    free = balance[quote]['free']
+
+    if free < required_margin:
+        raise ValueError(f"❌ 保证金不足：大约需要 {required_margin:.2f} {quote}，但只有 {free:.2f} {quote}")
+    else:
+        log_info(f"✅ 保证金充足：下单大约需要 {required_margin:.2f} {quote}，可用 {quote} 为 {free:.2f}")
+
+
 def loop_strategy():
     sent_content = None
     while True:
         try:
+            #  1.先配置 不然获取不了数据  'sandboxMode': simulated,
             ohlcv = fetch_ohlcv(symbol)
-            pre_drop, cur_drop = get_drop_percentage(ohlcv)
-            log_info(
-                f"🚦 前一分钟{'跌' if pre_drop < 0 else '涨'}幅: {pre_drop:.4f},阈值:{PRE_DROP_THRESHOLD / 100},差值：{pre_drop - PRE_DROP_THRESHOLD}")
-            log_info(
-                f"🚦 当前分钟{'跌' if cur_drop < 0 else '涨'}幅: {cur_drop:.4f},阈值：{CUR_DROP_THRESHOLD / 100},差值: {cur_drop - CUR_DROP_THRESHOLD}")
-            # 只做空仓
-            TRIGGER_DIRECTION = 'short'
-            if pre_drop <= PRE_DROP_THRESHOLD / 100 and cur_drop <= CUR_DROP_THRESHOLD / 100:
-                log_info("🔍 检测到连续跌幅超过阈值，准备检查是否已持仓...")
-                if has_position(TRIGGER_DIRECTION):
-                    log_warn(f"⚠️ 已持有{'多' if TRIGGER_DIRECTION != 'short' else '空'}仓，跳过下单")
-                else:
-                    log_info("🟢 满足建仓条件，执行策略...")
-                    # macOS 播放声音
-                    # os.system('say "满足建仓条件，执行策略"')
-                    strategy = TrailingEntryStrategy(
-                        exchange=exchange,
-                        symbol=symbol,
-                        amount=TRIGGER_AMOUNT,
-                        leverage=TRIGGER_LEVERAGE,
-                        margin_mode=TRIGGER_MARGIN_MODE,
-                        direction=TRIGGER_DIRECTION,
-                        trigger_price=ohlcv[1][4],
-                        trailing_percent=TRIGGER_TRAILING_PERCENT
-                    )
-                    trigger_entry_order, trailing_stop_order = strategy.run()
-                    content = format_template(format_placed_order(trigger_entry_order))
-                    if sent_content != content:
-                        sent_content = content
-                        notify_wechat(f"📈 满足建仓条件，策略{NOTICE_TITLE}正在执行")
-                        # notify_email(f"策略{NOTICE_TITLE}启动通知", "满足建仓条件，正在执行策略")
-                        notify_email(f"策略{NOTICE_TITLE}启动通知", content)
+
+            #  2.解决模拟环境异常 okx {"msg":"APIKey does not match current environment.","code":"50101"}
+            # exchange.set_sandbox_mode(simulated)
+
+            if ohlcv is None:
+                log_error('⚠️ 数据抓取失败跳过执行')
             else:
-                log_info("🟡 条件未满足，等待下一轮...")
-        # exit()
+                pre_drop, cur_drop = get_drop_percentage(ohlcv)
+                log_info(
+                    f"🚦 前一分钟{'跌' if pre_drop < 0 else '涨'}幅: {pre_drop:.4f},阈值:{PRE_DROP_THRESHOLD / 100},差值：{pre_drop - PRE_DROP_THRESHOLD}")
+                log_info(
+                    f"🚦 当前分钟{'跌' if cur_drop < 0 else '涨'}幅: {cur_drop:.4f},阈值：{CUR_DROP_THRESHOLD / 100},差值: {cur_drop - CUR_DROP_THRESHOLD}")
+
+                # 只做空仓
+                TRIGGER_DIRECTION = 'short'
+
+                # 资金检查
+                # check_swap_margin(exchange, symbol, TRIGGER_AMOUNT
+                #                   , leverage=TRIGGER_LEVERAGE
+                #                   , margin_mode=TRIGGER_MARGIN_MODE
+                #                   , pos_side=TRIGGER_DIRECTION
+                #                   , safety_factor=1.1)
+                # if 1 :
+                if pre_drop <= PRE_DROP_THRESHOLD / 100 and cur_drop <= CUR_DROP_THRESHOLD / 100:
+
+                    log_info("🔍 检测到连续跌幅超过阈值，准备检查是否已持仓...")
+
+                    if has_position(TRIGGER_DIRECTION):
+                        log_warn(f"⚠️ 已持有{'多' if TRIGGER_DIRECTION != 'short' else '空'}仓，跳过下单")
+                    else:
+
+                        # 资金检查
+                        check_swap_margin(exchange, symbol, TRIGGER_AMOUNT
+                                          , leverage=TRIGGER_LEVERAGE
+                                          , margin_mode=TRIGGER_MARGIN_MODE
+                                          , pos_side=TRIGGER_DIRECTION
+                                          , safety_factor=1.1)
+
+                        log_info("🟢 满足建仓条件，执行策略...")
+                        # macOS 播放声音
+                        # os.system('say "满足建仓条件，执行策略"')
+                        strategy = TrailingEntryStrategy(
+                            exchange=exchange,
+                            symbol=symbol,
+                            amount=TRIGGER_AMOUNT,
+                            leverage=TRIGGER_LEVERAGE,
+                            margin_mode=TRIGGER_MARGIN_MODE,
+                            direction=TRIGGER_DIRECTION,
+                            trigger_price=ohlcv[1][4],
+                            trailing_percent=TRIGGER_TRAILING_PERCENT
+                        )
+                        trigger_entry_order, trailing_stop_order = strategy.run()
+                        content = format_template(format_placed_order(trigger_entry_order))
+                        if sent_content != content:
+                            sent_content = content
+                            # notify_wechat(f"📈 满足建仓条件，策略{NOTICE_TITLE}正在执行")
+                            notify_email(f"策略{NOTICE_TITLE}启动通知", content)
+                else:
+                    log_info("🟡 条件未满足，等待下一轮...")
+            # exit()
+
+        except ValueError as e:
+            log_info(f"[资金不足警告] {e}")
+            content = str(e)
+            if sent_content != content:
+                sent_content = content
+                # notify_wechat(f"策略运行异常: {str(e)}")
+                notify_email("🚨资金不足警告🚨", str(e))
+
         except Exception as e:
             log_error(f"❌ 策略轮询异常: {str(e)}")
             content = str(e)
@@ -158,6 +244,7 @@ def loop_strategy():
 
 
 if __name__ == '__main__':
+    # symbol = 'BTC/USDT:USDT'  # swap 永续合约标准格式
     okx = ccxt.okx({
         'apiKey': apikey,
         'secret': secretkey,
@@ -173,8 +260,32 @@ if __name__ == '__main__':
         },
     })
     okx.hostname = backup_domain
-    # okx.set_sandbox_mode(simulated)
     exchange = okx
     log_info("🚀 初始化交易所完成，策略轮询开始...")
+
+    # ohcv = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=2)
+    #
+    # print(ohcv,len(ohcv)<1)
+    # #这个set_sandbox_mode和 'sandboxMode': simulated, 会影响fetch_ohlcv和fetch_balance查询数据
+    okx.set_sandbox_mode(simulated)
+
+    # balance = exchange.fetch_balance()
+    # print('balance', balance)
+    # print(f"balance 可用余额:{balance['free']} ")
+    # print(f"balance 已被占用的金额（用于挂单、保证金等）:{balance['used']} ")
+    # print(f"balance 	总资产 :{balance['total']} ")
+
+    # btc_amount = balance['BTC']['free']
+    # # market = exchange.market('BTC/USDT')
+    # market = exchange.market(symbol)  # 即 'BTC/USDT:USDT'
+    #
+    # min_amount = market['limits']['amount']['min']
+    # if btc_amount < min_amount:
+    #     raise ValueError(f"余额不足，最小交易量为 {min_amount} BTC")
+
+    # print(f"market {market} ")
+    # print(f"symbol {symbol} ")
+    # print(f"btc_amount {btc_amount} ")
+    # print(f"market 最小交易量为：{min_amount} BTC")
 
     loop_strategy()
