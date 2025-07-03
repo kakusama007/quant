@@ -59,7 +59,7 @@ notifier_config = {
       'smtp_port': 465,
       'smtp_user': 'love_fangdong@163.com',
       'smtp_pass': 'FASvqVhkwG6mYiAh',
-      'to_emails': ['1009030578@qq.com'
+      'to_emails': ['255592997@qq.com'
           ,'664050017@qq.com'
       ]
   },
