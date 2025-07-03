@@ -109,7 +109,7 @@ def monitor():
                         current_alerts[alert_id] = f'''
 {'🪂📉' if pct < 0 else '🔥📈'}{symbol}波动行情{'📉🪂' if pct < 0 else '📈🔥'}
 💰 开盘：{open_} {quote_currency} ↔️ 收盘：{close_} {quote_currency}
-📊 行情:{'🚀暴涨：' if pct > 0 else '💣暴跌：'}{pct:.6%}（1分钟）{'🚀' if pct > 0 else '💣'}
+📊 行情:{'🚀暴涨：' if pct > 0 else '💣暴跌：'}{pct:.6f}（1分钟）{'🚀' if pct > 0 else '💣'}
 ⏰ 时间:{datetime.fromtimestamp(kline[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}
 '''
 
