@@ -46,12 +46,12 @@ def has_position(pos_side):
     return False
 
 
-def notify_wechat(message):
+def notify_wechat(title,message):
     if notifier_config['wechat']['enable']:
         for key in notifier_config['wechat']['sendkeys']:
             try:
                 url = f'https://sctapi.ftqq.com/{key}.send'
-                requests.post(url, data={'title': '量化策略通知', 'desp': message})
+                requests.post(url, data={'title': title, 'desp': message})
             except Exception as e:
                 log_warn(f"微信通知失败: {e}")
 
@@ -110,7 +110,7 @@ def format_template(data):
 
 
 def check_swap_margin(exchange, symbol, amount, leverage=20, margin_mode='isolated'
-                      , pos_side='short', safety_factor=1.1, contract_size=None):
+                      , pos_side='short', safety_factor=1.1, contract_size=0.01):
     """
     检查 OKX 永续合约下单前是否有足够保证金资金。
 
@@ -174,7 +174,7 @@ def loop_strategy():
             else:
                 pre_pre_drop_pct, pre_drop_pct = get_drop_percentage(ohlcv)
 
-                # 只做空仓
+                # 只做空仓，匹配下面判断条件，是配套的
                 TRIGGER_DIRECTION = 'short'
 
                 # if 1 :
@@ -191,7 +191,9 @@ def loop_strategy():
                                           , leverage=TRIGGER_LEVERAGE
                                           , margin_mode=TRIGGER_MARGIN_MODE
                                           , pos_side=TRIGGER_DIRECTION
-                                          , safety_factor=1.1)
+                                          , safety_factor=BALANCE_CHECK_SECURITY_FACTOR,
+                                          contract_size=contract_size
+                                          )
 
                         log_info("🟢 满足建仓条件，执行策略...")
                         # macOS 播放声音
@@ -210,7 +212,7 @@ def loop_strategy():
                         content = format_template(format_placed_order(trigger_entry_order))
                         if sent_content != content:
                             sent_content = content
-                            # notify_wechat(f"📈 满足建仓条件，策略{NOTICE_TITLE}正在执行")
+                            notify_wechat(f"策略{NOTICE_TITLE}启动通知", content)
                             notify_email(f"策略{NOTICE_TITLE}启动通知", content)
                 else:
                     log_info("🟡 条件未满足，等待下一轮...")
