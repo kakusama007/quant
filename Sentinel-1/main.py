@@ -1,4 +1,5 @@
 # main.py
+import json
 import smtplib
 import time
 import threading
@@ -14,6 +15,8 @@ import requests
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+
+from Owl_No_1.exceptions.exceptions import WeChatNotifyError
 
 load_dotenv()
 
@@ -31,6 +34,9 @@ THRESHOLDS = {
     "BTC": BTC_THRESHOLD,
     "ETH": ETH_THRESHOLD
 }
+
+# 微信公众号配置
+WECHAT_WEBHOOK = os.getenv("WECHAT_WEBHOOK")
 
 # 日志配置
 log_dir = "logs"
@@ -99,7 +105,7 @@ def monitor():
                 threshold = THRESHOLDS.get(name)
                 logging.info(
                     f"🚦 {datetime.fromtimestamp(kline[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}':"
-                    f"{symbol}{'跌' if pct < 0 else '涨'}幅: {pct:.6f},阈值：{threshold}"
+                    f"{symbol}{'跌' if pct < 0 else '涨'}幅: {pct:.6f}%,阈值：{threshold}"
                 )
 
                 if threshold and abs(pct) >= abs(threshold):
@@ -109,7 +115,7 @@ def monitor():
                         current_alerts[alert_id] = f'''
 {'🪂📉' if pct < 0 else '🔥📈'}{symbol}波动行情{'📉🪂' if pct < 0 else '📈🔥'}
 💰 开盘：{open_} {quote_currency} ↔️ 收盘：{close_} {quote_currency}
-📊 行情:{'🚀暴涨：' if pct > 0 else '💣暴跌：'}{pct:.6f} %（1分钟）{'🚀' if pct > 0 else '💣'}
+📊 行情:{'🚀暴涨：' if pct > 0 else '💣暴跌：'}{pct:.6f}%（1分钟）{'🚀' if pct > 0 else '💣'}
 ⏰ 时间:{datetime.fromtimestamp(kline[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}
 '''
 
@@ -143,6 +149,7 @@ def notify_email(subject, content):
     except Exception as e:
         logging.error(f"邮件通知失败: {e}")
 
+# 废弃
 def notify_wechat(title,message):
     if notifier_config['wechat']['enable']:
         for key in notifier_config['wechat']['sendkeys']:
@@ -153,11 +160,38 @@ def notify_wechat(title,message):
                 logging.error(f"通知失败: {e}")
 
 
+def send_wechat(title,content):
+    if not WECHAT_WEBHOOK:
+        logging.error(f"⚠️微信通知失败,WECHAT_WEBHOOK发送失败!")
+    else:
+        headers = {'Content-Type': 'application/json'}
+        # markdown_content = f"""# {title}\n{content}"""
+        # payload = {
+        #     "msgtype": "markdown",
+        #     "markdown": {
+        #         # "content": f"**{title}：**\n\n{text}"
+        #         "content": markdown_content
+        #         # , "mentioned_list":"@all"
+        #     }
+        payload = {
+            "msgtype": "text",
+            "text": {
+                "content": f"{title}\n{content}",
+                "mentioned_list": ["@all"]
+            }
+        }
+        try:
+            r = requests.post(WECHAT_WEBHOOK, data=json.dumps(payload), headers=headers)
+            r.raise_for_status()
+        except WeChatNotifyError as e:
+            logging.error(f"微信通知失败: {e}")
+
 def send_notification(msg):
     try:
         title = f'📢🚨🚨{NOTICE_TITLE}通知🚨🚨🔊'
         logging.info(f"[{datetime.now()}] {title}: {msg}")
-        notify_wechat(title,msg)
+        # notify_wechat(title,msg)
+        send_wechat(title,msg)
         notify_email(title, msg)
     except Exception as e:
         logging.error(f"通知失败: {e}")
