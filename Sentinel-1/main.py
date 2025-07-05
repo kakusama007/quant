@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime
 
-from Owl_No_1.exceptions.exceptions import WeChatNotifyError
+from exceptions.exceptions import WeChatNotifyError
 
 load_dotenv()
 

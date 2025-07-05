@@ -40,6 +40,7 @@ def get_drop_percentage(ohlcv: object) -> object:
 
 
 def has_position(pos_side):
+    log_info("🔍 持仓情况检查...")
     positions = exchange.fetch_positions([symbol])
     for p in positions:
         if p['side'] == pos_side and float(p['contracts']) > 0:
@@ -201,8 +202,7 @@ def loop_strategy():
             else:
                 pre_pre_drop_pct, pre_drop_pct = get_drop_percentage(ohlcv)
 
-                if 1 :
-                # if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
+                if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
 
                     log_info("🔍 检测到连续跌幅超过阈值，准备检查是否已持仓...")
 
@@ -210,6 +210,7 @@ def loop_strategy():
                         log_warn(f"⚠️ 已持有{'多' if TRIGGER_DIRECTION != 'short' else '空'}仓，跳过下单")
                     else:
 
+                        log_info("🔍 准备资金检查...")
                         # 资金检查
                         check_swap_margin(exchange, symbol, TRIGGER_AMOUNT
                                           , leverage=TRIGGER_LEVERAGE
@@ -245,24 +246,24 @@ def loop_strategy():
                 # exit()
 
         except ValueError as e:
-            log_info(f"[资金不足警告] {e}")
+            log_info(f"【{NOTICE_TITLE}】资金不足警告 {e}")
             content = str(e)
             if sent_content != content:
                 sent_content = content
-                send_wechat("⚠️💰资金不足警告💰⚠️",content)
+                send_wechat(f"⚠️💰【{NOTICE_TITLE}】资金不足警告💰⚠️",content)
                 # notify_wechat(f"策略运行异常: {str(e)}")
-                notify_email("⚠️💰资金不足警告💰⚠️", str(e))
+                notify_email(f"⚠️💰【{NOTICE_TITLE}】资金不足警告💰⚠️", str(e))
         except WeChatNotifyError as e:
             log_info(f"微信通知失败 {e}")
 
         except Exception as e:
-            log_error(f"❌ 策略轮询异常: {str(e)}")
+            log_error(f"❌ 【{NOTICE_TITLE}】轮询异常: {str(e)}")
             content = str(e)
             if sent_content != content:
                 sent_content = content
-                send_wechat("🚨策略运行异常🚨",content)
+                send_wechat(f"🚨【{NOTICE_TITLE}】运行异常🚨",content)
                 # notify_wechat(f"策略运行异常: {str(e)}")
-                notify_email("🚨策略运行异常🚨", str(e))
+                notify_email(f"🚨【{NOTICE_TITLE}】运行异常🚨", content)
 
         time.sleep(CHECK_INTERVAL)
 
