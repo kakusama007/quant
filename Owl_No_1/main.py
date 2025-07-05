@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from datetime import datetime
@@ -5,6 +6,7 @@ from datetime import datetime
 import ccxt
 
 from config import *
+from exceptions.exceptions import WeChatNotifyError, EmailNotifyError
 from strategy.TrailingEntryStrategy import TrailingEntryStrategy
 from logger.log import log_info, log_warn, log_error
 import requests
@@ -70,7 +72,7 @@ def notify_email(subject, content):
         smtp.login(smtp_conf['smtp_user'], smtp_conf['smtp_pass'])
         smtp.sendmail(smtp_conf['smtp_user'], smtp_conf['to_emails'], msg.as_string())
         smtp.quit()
-    except Exception as e:
+    except EmailNotifyError as e:
         log_warn(f"邮件通知失败: {e}")
 
 
@@ -101,11 +103,11 @@ def format_placed_order(order):
 
 def format_template(data):
     return f"""
-            🚀 交易通知: {data['side']}
-            📈 交易对:{data['symbol']}
-            🏷️ 标签: {data['tag']}
-            🆔 订单ID: {data['id']}
-            ⏰ 时间: {data['time']}
+🚀 交易通知: {data['side']}
+📈 交易对:{data['symbol']}
+🏷️ 标签: {data['tag']}
+🆔 订单ID: {data['id']}
+⏰ 时间: {data['time']}
             """
 
 
@@ -160,6 +162,26 @@ def check_swap_margin(exchange, symbol, amount, leverage=20, margin_mode='isolat
         log_info(f"✅ 保证金充足：下单大约需要 {required_margin:.2f} {quote}，可用 {quote} 为 {free:.2f}")
 
 
+def send_wechat(title,content):
+    if not WECHAT_WEBHOOK:
+        log_error(f"⚠️微信通知失败,WECHAT_WEBHOOK发送失败!")
+    else:
+        headers = {'Content-Type': 'application/json'}
+        markdown_content = f"""# {title}\n{content}"""
+        payload = {
+            "msgtype": "markdown",
+            "markdown": {
+                # "content": f"**{title}：**\n\n{text}"
+                "content": markdown_content
+                , "mentioned_list":"@all"
+            }
+        }
+        try:
+            r = requests.post(WECHAT_WEBHOOK, data=json.dumps(payload), headers=headers)
+            r.raise_for_status()
+        except WeChatNotifyError as e:
+            log_error(f"微信通知失败: {e}")
+
 def loop_strategy():
     sent_content = None
     while True:
@@ -173,9 +195,6 @@ def loop_strategy():
                 log_error('⚠️ 数据抓取失败跳过执行')
             else:
                 pre_pre_drop_pct, pre_drop_pct = get_drop_percentage(ohlcv)
-
-                # 只做空仓，匹配下面判断条件，是配套的
-                TRIGGER_DIRECTION = 'short'
 
                 # if 1 :
                 if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
@@ -212,8 +231,10 @@ def loop_strategy():
                         content = format_template(format_placed_order(trigger_entry_order))
                         if sent_content != content:
                             sent_content = content
-                            notify_wechat(f"策略{NOTICE_TITLE}启动通知", content)
-                            notify_email(f"策略{NOTICE_TITLE}启动通知", content)
+                            title = f"【{NOTICE_TITLE}】启动通知"
+                            send_wechat(title,content)
+                            # notify_wechat(title, content)
+                            notify_email(title, content)
                 else:
                     log_info("🟡 条件未满足，等待下一轮...")
                 # exit()
@@ -225,6 +246,8 @@ def loop_strategy():
                 sent_content = content
                 # notify_wechat(f"策略运行异常: {str(e)}")
                 notify_email("🚨资金不足警告🚨", str(e))
+        except WeChatNotifyError as e:
+            log_info(f"微信通知失败 {e}")
 
         except Exception as e:
             log_error(f"❌ 策略轮询异常: {str(e)}")

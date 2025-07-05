@@ -48,6 +48,9 @@ ORDER_TYPE_MAPPING = {
     'mmp_and_post_only': '做市商保护且只做maker单(仅适用于组合保证金账户模式下的期权订单)'
 }
 
+# 微信公众号配置
+WECHAT_WEBHOOK = os.getenv("WECHAT_WEBHOOK")
+
 notifier_config = {
   'wechat': {
       'enable': os.getenv("ENABLE_WECHAT", "True").lower() == "true",
