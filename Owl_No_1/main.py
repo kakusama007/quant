@@ -1,5 +1,4 @@
 import json
-import os
 import time
 from datetime import datetime
 
@@ -168,12 +167,18 @@ def send_wechat(title,content):
     else:
         headers = {'Content-Type': 'application/json'}
         markdown_content = f"""# {title}\n{content}"""
+        # payload = {
+        #     "msgtype": "markdown",
+        #     "markdown": {
+        #         # "content": f"**{title}：**\n\n{text}"
+        #         "content": markdown_content
+        #         # , "mentioned_list":"@all"
+        #     }
         payload = {
-            "msgtype": "markdown",
-            "markdown": {
-                # "content": f"**{title}：**\n\n{text}"
-                "content": markdown_content
-                , "mentioned_list":"@all"
+            "msgtype": "text",
+            "text": {
+                "content": f"{title}\n{content}",
+                "mentioned_list": ["@all"]
             }
         }
         try:
@@ -196,8 +201,8 @@ def loop_strategy():
             else:
                 pre_pre_drop_pct, pre_drop_pct = get_drop_percentage(ohlcv)
 
-                # if 1 :
-                if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
+                if 1 :
+                # if pre_pre_drop_pct <= PRE_PRE_DROP_THRESHOLD and pre_drop_pct <= PRE_DROP_THRESHOLD:
 
                     log_info("🔍 检测到连续跌幅超过阈值，准备检查是否已持仓...")
 
@@ -244,8 +249,9 @@ def loop_strategy():
             content = str(e)
             if sent_content != content:
                 sent_content = content
+                send_wechat("⚠️💰资金不足警告💰⚠️",content)
                 # notify_wechat(f"策略运行异常: {str(e)}")
-                notify_email("🚨资金不足警告🚨", str(e))
+                notify_email("⚠️💰资金不足警告💰⚠️", str(e))
         except WeChatNotifyError as e:
             log_info(f"微信通知失败 {e}")
 
@@ -254,6 +260,7 @@ def loop_strategy():
             content = str(e)
             if sent_content != content:
                 sent_content = content
+                send_wechat("🚨策略运行异常🚨",content)
                 # notify_wechat(f"策略运行异常: {str(e)}")
                 notify_email("🚨策略运行异常🚨", str(e))
 
