@@ -32,9 +32,9 @@ def get_drop_percentage(ohlcv: object) -> object:
     pre_pre_drop_pct = (pre_pre_close_price - pre_pre_open_price) * 100 / pre_pre_open_price
     pre_drop_pct = (pre_close - pre_open) * 100 / pre_open
     log_info(
-        f"🚦 前两分钟 {datetime.fromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}:{'跌' if pre_pre_drop_pct < 0 else '涨'}幅: {pre_pre_drop_pct:.6f},阈值:{PRE_PRE_DROP_THRESHOLD}")
+        f"🚦 前两分钟 {datetime.fromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}:{'跌' if pre_pre_drop_pct < 0 else '涨'}幅: {pre_pre_drop_pct:.6f}%,阈值:{PRE_PRE_DROP_THRESHOLD}%")
     log_info(
-        f"🚦 前一分钟 {datetime.fromtimestamp(ohlcv[1][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}':{'跌' if pre_drop_pct < 0 else '涨'}幅: {pre_drop_pct:.6f},阈值：{PRE_DROP_THRESHOLD}")
+        f"🚦 前一分钟 {datetime.fromtimestamp(ohlcv[1][0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}':{'跌' if pre_drop_pct < 0 else '涨'}幅: {pre_drop_pct:.6f}%,阈值：{PRE_DROP_THRESHOLD}%")
 
     return pre_pre_drop_pct, pre_drop_pct
 

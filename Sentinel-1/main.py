@@ -105,7 +105,7 @@ def monitor():
                 threshold = THRESHOLDS.get(name)
                 logging.info(
                     f"🚦 {datetime.fromtimestamp(kline[0] / 1000).strftime("%Y-%m-%d %H:%M:%S")}':"
-                    f"{symbol}{'跌' if pct < 0 else '涨'}幅: {pct:.6f}%,阈值：{threshold}"
+                    f"{symbol}{'跌' if pct < 0 else '涨'}幅: {pct:.6f}%,阈值：{threshold}%"
                 )
 
                 if threshold and abs(pct) >= abs(threshold):
