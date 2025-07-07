@@ -82,11 +82,15 @@ def mask_sensitive(data):
     return data
 
 
-def format_placed_order(order):
+def format_placed_order(order,price,take_profit,stop_loss,leverage):
     info = order.get('info', {})
 
     return {
         'symbol': order.get('symbol', 'N/A'),
+        'leverage':leverage,
+        'price': price,
+        'take_profit': take_profit,
+        'stop_loss': stop_loss,
         'type': ORDER_TYPE_MAPPING.get(order.get('type')) or '未知订单类型',
 
         'side': '📤 卖出(sell)' if order.get('side') == 'sell' else '📥 买入(buy)',
@@ -103,8 +107,12 @@ def format_placed_order(order):
 
 def format_template(data):
     return f"""
-🚀 交易通知: {data['side']}
+🚀 交易方向: {data['side']}
 📈 交易对:{data['symbol']}
+💰 最新价格（仅参考）:{data['price']} 
+🌟 止盈价: {data['take_profit']} 
+🛑 止损价: {data['stop_loss']}
+⚖️ 杠杆:{data['leverage']}倍
 🏷️ 标签: {data['tag']}
 🆔 订单ID: {data['id']}
 ⏰ 时间: {data['time']}
@@ -223,18 +231,54 @@ def loop_strategy():
                         log_info("🟢 满足建仓条件，执行策略...")
                         # macOS 播放声音
                         # os.system('say "满足建仓条件，执行策略"')
-                        strategy = TrailingEntryStrategy(
-                            exchange=exchange,
+                        # strategy = TrailingEntryStrategy(
+                        #     exchange=exchange,
+                        #     symbol=symbol,
+                        #     amount=TRIGGER_AMOUNT,
+                        #     leverage=TRIGGER_LEVERAGE,
+                        #     margin_mode=TRIGGER_MARGIN_MODE,
+                        #     direction=TRIGGER_DIRECTION,
+                        #     trigger_price=ohlcv[2][4],
+                        #     trailing_percent=TRIGGER_TRAILING_PERCENT
+                        # )
+                        # trigger_entry_order, trailing_stop_order = strategy.run()
+
+                        # 设置杠杆
+                        exchange.set_margin_mode(TRIGGER_MARGIN_MODE, symbol,
+                                                 {
+                                                     'leverage': TRIGGER_LEVERAGE,
+                                                     'posSide': TRIGGER_DIRECTION})
+                        # 获取最新价格快照
+                        ticker = exchange.fetch_ticker(symbol)
+                        last_price = float(ticker['last'])  # 或 'info' 里的 'last' 视 CCXT 版本而定
+                        # 计算止盈止损
+                        stop_loss_trigger_price = round(last_price * STOP_LOSS_PCT, 2)  #  止损
+                        take_profit_trigger_price = round(last_price * TAKE_PROFIT_PCT, 2)  # 止盈
+
+                        # 创建开仓单 + 附带止盈止损
+                        order = exchange.create_order_with_take_profit_and_stop_loss(
                             symbol=symbol,
-                            amount=TRIGGER_AMOUNT,
-                            leverage=TRIGGER_LEVERAGE,
-                            margin_mode=TRIGGER_MARGIN_MODE,
-                            direction=TRIGGER_DIRECTION,
-                            trigger_price=ohlcv[2][4],
-                            trailing_percent=TRIGGER_TRAILING_PERCENT
+                            type="market",  # 市价单
+                            side="sell",  # 做空
+                            amount=TRIGGER_AMOUNT,  # 数量
+                            price=None,  # 市价无须填写
+
+                            takeProfit=take_profit_trigger_price,  # 止盈触发价格
+                            stopLoss=stop_loss_trigger_price,  # 止损触发价格
+
+                            params={
+                                "tdMode": TRIGGER_MARGIN_MODE,  # 保证金模式
+                                "posSide": TRIGGER_DIRECTION,  # 仓位方向
+                                "reduceOnly": False,
+                                "takeProfitType": "market",  # 成交方式
+                                "stopLossType": "market",  # 成交方式
+                                "takeProfitPriceType": "mark",  # 触发价格类型
+                                "stopLossPriceType": "mark"  # 用标记价格作为触发依据
+                            }
                         )
-                        trigger_entry_order, trailing_stop_order = strategy.run()
-                        content = format_template(format_placed_order(trigger_entry_order))
+                        content = format_template(
+                            format_placed_order(order, last_price, take_profit_trigger_price, stop_loss_trigger_price,
+                                                TRIGGER_LEVERAGE))
                         if sent_content != content:
                             sent_content = content
                             title = f"【{NOTICE_TITLE}】启动通知"

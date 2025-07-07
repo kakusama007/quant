@@ -32,7 +32,8 @@ TRIGGER_MARGIN_MODE = os.getenv("TRIGGER_MARGIN_MODE", "isolated")# 保证金模
 TRIGGER_AMOUNT = int(os.getenv("TRIGGER_AMOUNT", "1"))# 开仓数量（单位：合约张数）
 TRIGGER_LEVERAGE = int(os.getenv("TRIGGER_LEVERAGE", "10"))# 杠杆
 TRIGGER_TRAILING_PERCENT = float(os.getenv("TRIGGER_TRAILING_PERCENT", "0.05"))# 回撤百分比（%） 1%  1000+-
-
+TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0.97"))# 止盈系数
+STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", "1.01"))# 止损系数
 # 通知配置
 NOTICE_TITLE = os.getenv("NOTICE_TITLE", "猫头鹰1号")
 
